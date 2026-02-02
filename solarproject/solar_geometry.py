@@ -202,17 +202,38 @@ def solar_position(lat: float, lon: float, year: int, month: int, day: int,
     # Solar elevation
     elevation = 90 - zenith * RAD_TO_DEG
 
-    # Solar azimuth
-    if cos_zenith != 0:
-        cos_azimuth = ((np.sin(lat_rad) * np.cos(zenith) - np.sin(decl_rad)) /
-                       (np.cos(lat_rad) * np.sin(zenith)))
-        cos_azimuth = np.clip(cos_azimuth, -1, 1)
-        azimuth = np.arccos(cos_azimuth) * RAD_TO_DEG
+    # Solar azimuth (measured clockwise from North: 0=N, 90=E, 180=S, 270=W)
+    #
+    # The hour angle convention is:
+    #   hour_angle < 0: morning (sun East of meridian)
+    #   hour_angle > 0: afternoon (sun West of meridian)
+    #
+    # NOAA formula (from their solar calculator spreadsheet):
+    # This gives the angle measured FROM SOUTH, in the range 0-180°
+    if np.sin(zenith) > 0.001:  # Avoid division by zero near zenith
+        cos_azimuth_from_south = ((np.sin(lat_rad) * np.cos(zenith) - np.sin(decl_rad)) /
+                                   (np.cos(lat_rad) * np.sin(zenith)))
+        cos_azimuth_from_south = np.clip(cos_azimuth_from_south, -1, 1)
 
-        if hour_angle > 0:
-            azimuth = 360 - azimuth
+        # arccos gives 0-180° range
+        azimuth_from_south = np.arccos(cos_azimuth_from_south) * RAD_TO_DEG
+
+        # Convert to compass convention (from North, clockwise)
+        # Morning (hour_angle < 0): sun is East of South → azimuth = 180 - azi_from_south
+        # Afternoon (hour_angle > 0): sun is West of South → azimuth = 180 + azi_from_south
+        if hour_angle < 0:
+            azimuth = 180 - azimuth_from_south
+        else:
+            azimuth = 180 + azimuth_from_south
+
+        # Normalize to 0-360
+        if azimuth < 0:
+            azimuth += 360
+        elif azimuth >= 360:
+            azimuth -= 360
     else:
-        azimuth = 180 if lat > decl else 0
+        # Sun at zenith - azimuth undefined, use noon convention
+        azimuth = 180
 
     return elevation, azimuth
 
